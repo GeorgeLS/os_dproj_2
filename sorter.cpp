@@ -6,6 +6,7 @@
 #include "sorter_data_structures.h"
 #include "sort_methods.h"
 #include "pipe.h"
+#include "timer.h"
 
 struct Sorter_Options {
   const char *filename;
@@ -104,11 +105,20 @@ int main(int argc, char *args[]) {
   Sorter_Options options = get_sorter_options(args);
   Pipe pipe{options.pipe_name};
   pipe.open(Pipe::Mode::Write_Only);
+  Timer t{};
+  t.start();
   Array<Record> records = load_records_from_file(options.filename, options.start_pos, options.end_pos);
   Column_Collection collection = copy_column_data(records, options.column);
-  quick_sort(collection);
+  size_t sort_method_len = strlen(options.sort_method);
+  if (!strncmp(options.sort_method, "-q", sort_method_len)) {
+    quick_sort(collection);
+  } else {
+    heap_sort(collection);
+  }
+  t.stop();
   for (Column c : collection.columns) {
     pipe << *c.record;
   }
+  pipe << t.elapsed_seconds();
   return EXIT_SUCCESS;
 }

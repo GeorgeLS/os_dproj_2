@@ -8,6 +8,9 @@
 #include "vector.h"
 #include "process.h"
 
+using Stats_Pair = Pair<double, Array<double>>;
+using Stats = Array<Stats_Pair>;
+
 constexpr char *INPUT_FILE_OPTION = (char *const) "-f";
 constexpr char *QUICKSORT_OPTION = (char *const) "-q";
 constexpr char *HEAPSORT_OPTION = (char *const) "-h";
@@ -89,19 +92,20 @@ internal Pair<Array<Process>, Array<Pipe>> create_coaches_and_pipes(const Progra
     pipes.reserve(options.column_sorts.size);
     for (size_t i = 0U; i != options.column_sorts.size; ++i) {
       Pair<const char *, u64> column_sort = options.column_sorts[i];
+      const char *pipe_name = to_string("coord_to_coach_%zu", i);
 
       coaches.push(Process{
           "./coach",
           options.input_file,
           records_n,
-          (const char *) to_string(1U << i),
+          (const char *) to_string(i),
           column_sort.first,
           (const char *) to_string(column_sort.second),
+          (const char *) to_string("coord_to_coach_%zu", i),
           (const char *) NULL
       });
 
-      const char *pipe_name = to_string("coord_to_coach_%zu", i);
-      pipes.push(Pipe{pipe_name, sizeof(u64)});
+      pipes.push(Pipe{pipe_name, sizeof(double)});
     }
   } else {
     coaches.reserve(1);
@@ -113,11 +117,59 @@ internal Pair<Array<Process>, Array<Pipe>> create_coaches_and_pipes(const Progra
         "1",
         "q",
         "1",
+        "coord_to_coach_0",
         (const char *) NULL,
     });
-    pipes.push(Pipe{"coord_to_coach_0", sizeof(u64)});
+    pipes.push(Pipe{"coord_to_coach_0", sizeof(double)});
   }
   return make_pair(coaches, pipes);
+}
+
+internal void print_stats(Stats stats) {
+  report("========================= STATS =========================\n");
+  double min_coach_secs{std::numeric_limits<double>::max()};
+  double max_coach_secs{0.0};
+  double avg_coach_secs{0.0};
+  size_t coach_i{0U};
+  for (Stats_Pair &p : stats) {
+    double min_sorter_secs{std::numeric_limits<double>::max()};
+    double max_sorter_secs{0.0};
+    double avg_sorter_secs{0.0};
+
+    for (double sorter_secs : p.second) {
+      if (sorter_secs < min_sorter_secs) {
+        min_sorter_secs = sorter_secs;
+      }
+      if (sorter_secs > max_sorter_secs) {
+        max_sorter_secs = sorter_secs;
+      }
+      avg_sorter_secs += sorter_secs;
+    }
+    avg_sorter_secs /= p.second.size;
+
+    report("COACH %zu:\n"
+           "\tMax sorter execution time: %lf sec\n"
+           "\tMin sorter execution time: %lf sec\n"
+           "\tAverage sorter execution time: %lf sec",
+           coach_i, max_sorter_secs, min_sorter_secs, avg_sorter_secs);
+
+    ++coach_i;
+
+    if (p.first < min_coach_secs) {
+      min_coach_secs = p.first;
+    }
+    if (p.first > max_coach_secs) {
+      max_coach_secs = p.first;
+    }
+    avg_coach_secs += p.first;
+  }
+
+  avg_coach_secs /= stats.size;
+  report("\nMax coach execution time: %lf sec\n"
+         "Min coach execution time: %lf sec\n"
+         "Average coach execution time: %lf sec\n",
+         max_coach_secs, min_coach_secs, avg_coach_secs);
+  report("=========================================================");
 }
 
 int main(int argc, char *args[]) {
@@ -132,8 +184,25 @@ int main(int argc, char *args[]) {
   for (Process p : coaches) {
     p.spawn();
   }
-  for (Pipe p : pipes) {
+  for (Pipe &p : pipes) {
     p.open(Pipe::Mode::Read_Only);
   }
+
+  Stats stats(options.column_sorts.size);
+  for (size_t i = 0U; i != pipes.size; ++i) {
+    Pipe p = pipes[i];
+    size_t sorters_n = 1U << i;
+    double coach_elapsed_secs;
+    p >> coach_elapsed_secs;
+    Stats_Pair pair = make_pair(coach_elapsed_secs, Array<double>(sorters_n));
+    for (size_t j = 0U; j != sorters_n; ++j) {
+      double elapsed_secs;
+      p >> elapsed_secs;
+      pair.second.push(elapsed_secs);
+    }
+    stats.push(pair);
+  }
+
+  print_stats(stats);
   return 0;
 }

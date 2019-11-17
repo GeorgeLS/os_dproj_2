@@ -1,6 +1,8 @@
 #ifndef EXERCISE_II__UTILS_H_
 #define EXERCISE_II__UTILS_H_
 
+#include <sys/times.h>
+#include <functional>
 #include "common.h"
 #include "array.h"
 #include "record.h"
@@ -20,4 +22,5 @@ char *to_string(const char *fmt, Args... args) {
   asprintf(&str, fmt, args...);
   return str;
 }
+
 #endif //EXERCISE_II__UTILS_H_

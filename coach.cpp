@@ -5,6 +5,7 @@
 #include "array.h"
 #include "process.h"
 #include "pair.h"
+#include "timer.h"
 
 struct Coach_Options {
   const char *filename;
@@ -12,6 +13,7 @@ struct Coach_Options {
   size_t id;
   const char *sort_method;
   const char *column;
+  const char *pipe_name;
 };
 
 internal Coach_Options get_coach_options(char *args[]) {
@@ -21,6 +23,7 @@ internal Coach_Options get_coach_options(char *args[]) {
   string_to_i64(args[3], (i64 *) &options.id);
   options.sort_method = args[4];
   options.column = args[5];
+  options.pipe_name = args[6];
   return options;
 }
 
@@ -85,11 +88,14 @@ create_sorters_and_pipes(Coach_Options options, Array<size_t> sorters_sizes) {
  *      4) The id of the coach (0, 1, 2, 3)
  *      5) The sort method to use
  *      6) The column number to sort
+ *      7) The pipe name to use for communication with coordinator
  * @return A code indicating the success or failure of the process execution
  */
 int main(int argc, char *args[]) {
-  assert(argc == 6);
+  assert(argc == 7);
   Coach_Options options = get_coach_options(args);
+  Pipe coord_pipe{options.pipe_name};
+  coord_pipe.open(Pipe::Mode::Write_Only);
   auto sorters_sizes = calculate_sizes_for_sorters(options.id, options.records_n);
   auto sorters_and_pipes = create_sorters_and_pipes(options, sorters_sizes);
   auto sorters = sorters_and_pipes.first;
@@ -100,7 +106,10 @@ int main(int argc, char *args[]) {
   for (Pipe &p : pipes) {
     p.open(Pipe::Mode::Read_Only);
   }
+
+  // Read sorted records from each sorter
   size_t sorters_n = 1U << options.id;
+  double *sorters_elapsed_secs = (double *) alloca(sorters_n * sizeof(double));
   Array<Array<Record>> records(sorters_n);
   for (size_t i = 0U; i != pipes.size; ++i) {
     size_t records_n = sorters_sizes[i];
@@ -111,14 +120,24 @@ int main(int argc, char *args[]) {
       p >> r;
       records[i].push(r);
     }
+    p >> sorters_elapsed_secs[i];
   }
 
+  Timer t{};
+  t.start();
+  // Merge sorted records
   size_t column;
   string_to_i64((char *) options.column, (i64 *) &column);
   size_t *indexes = (size_t *) alloca(sorters_n * sizeof(size_t));
   for (size_t i = 0U; i != sorters_n; ++i) {
     indexes[i] = 0U;
   }
+
+  char *out_filename = to_string("%s.%s", options.filename, options.column);
+  int fd = open(out_filename,
+                O_CREAT | O_TRUNC | O_WRONLY,
+                S_IRWXU | S_IRGRP | S_IROTH);
+  free(out_filename);
 
   while (true) {
     bool finished{true};
@@ -135,8 +154,15 @@ int main(int argc, char *args[]) {
         min_index = i;
       }
     }
-    records[min_index][indexes[min_index]].print();
+    write(fd, &records[min_index][indexes[min_index]], sizeof(Record));
     ++indexes[min_index];
+  }
+  t.stop();
+  close(fd);
+
+  coord_pipe << t.elapsed_seconds();
+  for (size_t i = 0U; i != sorters_n; ++i) {
+    coord_pipe << sorters_elapsed_secs[i];
   }
 
   return EXIT_SUCCESS;

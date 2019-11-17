@@ -60,6 +60,47 @@ void quick_sort(Column_Collection collection) {
   __quick_sort(collection.columns.data, 0, collection.columns.size - 1, collection.type);
 }
 
-void heap_sort(Column_Collection collection) {
+[[gnu::always_inline]]
+internal size_t left(size_t index) { return (index << 1U) + 1U; }
 
+[[gnu::always_inline]]
+internal size_t right(size_t index) { return (index << 1U) + 2U; }
+
+internal void max_heapify(Column_Collection collection, size_t index) {
+  auto &heap = collection.columns;
+  bool restoring{true};
+  while (restoring) {
+    size_t max_index = index;
+    size_t left_index = left(max_index);
+    size_t right_index = right(max_index);
+    if (left_index < heap.size and Column::compare(heap[left_index], heap[max_index], collection.type) > 0) {
+      max_index = left_index;
+    }
+    if (right_index < heap.size and Column::compare(heap[right_index], heap[max_index], collection.type) > 0) {
+      max_index = right_index;
+    }
+    if (max_index != index) {
+      std::swap(heap[max_index], heap[index]);
+      index = max_index;
+    } else {
+      restoring = false;
+    }
+  };
+}
+
+internal void build_max_heap(Column_Collection collection) {
+  for (ssize_t i = (collection.columns.size >> 1U) - 1U; i >= 0; --i) {
+    max_heapify(collection, i);
+  }
+}
+
+void heap_sort(Column_Collection collection) {
+  build_max_heap(collection);
+  auto &heap = collection.columns;
+  for (ssize_t i = heap.capacity - 1U; i >= 0U; --i) {
+    std::swap(heap[0], heap[i]);
+    --heap.size;
+    max_heapify(collection, 0);
+  }
+  heap.size = heap.capacity;
 }

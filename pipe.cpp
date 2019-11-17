@@ -18,6 +18,9 @@ Pipe::~Pipe() {
 bool Pipe::open(Pipe::Mode mode) {
   mkfifo(path, 0777);
   fd = ::open(path, static_cast<int>(mode));
+  if (fd == -1) {
+    perror("Opening pipe:");
+  }
   return fd != -1;
 }
 

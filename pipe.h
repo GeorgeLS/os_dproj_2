@@ -39,7 +39,7 @@ struct Pipe {
 
   Pipe &operator<<(const char *str);
 
-  template<typename T, typename std::enable_if<std::is_integral<T>::value, bool>::type = true>
+  template<typename T, typename std::enable_if<std::is_fundamental<T>::value, bool>::type = true>
   Pipe &operator<<(const T &value);
 
   template<typename T>
@@ -47,7 +47,7 @@ struct Pipe {
 
   char *read(size_t bytes);
 
-  template<typename T, typename std::enable_if<std::is_integral<T>::value, bool>::type = true>
+  template<typename T, typename std::enable_if<std::is_fundamental<T>::value, bool>::type = true>
   Pipe &operator>>(T &value);
 
   Array<byte> buffer;
@@ -63,7 +63,7 @@ Pipe& Pipe::write(const T &data) {
   return *this;
 }
 
-template<typename T, typename std::enable_if<std::is_integral<T>::value, bool>::type>
+template<typename T, typename std::enable_if<std::is_fundamental<T>::value, bool>::type>
 Pipe &Pipe::operator<<(const T &value) {
   return write(value);
 }
@@ -79,9 +79,9 @@ T Pipe::read() {
   return *(T*)buffer.data;
 }
 
-template<typename T, typename std::enable_if<std::is_integral<T>::value, bool>::type>
+template<typename T, typename std::enable_if<std::is_fundamental<T>::value, bool>::type>
 Pipe &Pipe::operator>>(T &value) {
-  read(value);
+  value = read<T>();
   return *this;
 }
 
