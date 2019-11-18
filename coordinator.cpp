@@ -118,7 +118,7 @@ internal Pair<Array<Process>, Array<Pipe>> create_coaches_and_pipes(const Progra
         "./coach",
         options.input_file,
         records_n,
-        "1",
+        "0",
         "q",
         "1",
         "coord_to_coach_0",
@@ -203,7 +203,7 @@ int main(int argc, char *args[]) {
     p.wait();
   }
 
-  Array<Stat> stats(options.column_sorts.size);
+  Array<Stat> stats(options.column_sorts.size ? options.column_sorts.size : 1);
   for (size_t i = 0U; i != pipes.size; ++i) {
     Pipe p = pipes[i];
     size_t sorters_n = 1U << i;
