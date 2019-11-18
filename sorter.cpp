@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <signal.h>
 #include "common.h"
 #include "utils.h"
 #include "sorter_data_structures.h"
@@ -119,6 +120,7 @@ int main(int argc, char *args[]) {
   for (Column c : collection.columns) {
     pipe << *c.record;
   }
-  pipe << t.elapsed_seconds();
+  pipe << t.elapsed_cpu_seconds();
+  kill(getppid(), SIGUSR2);
   return EXIT_SUCCESS;
 }

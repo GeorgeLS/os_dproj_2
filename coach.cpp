@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <csignal>
 #include "utils.h"
 #include "common.h"
 #include "array.h"
@@ -15,6 +16,24 @@ struct Coach_Options {
   const char *column;
   const char *pipe_name;
 };
+
+global sig_atomic_t sigusr2_count;
+
+internal void handle_signal(int signum) {
+  if (signum == SIGUSR2) {
+    __atomic_fetch_add(&sigusr2_count, 1, __ATOMIC_SEQ_CST);
+  }
+}
+
+internal void register_signals() {
+  struct sigaction action{};
+  sigemptyset(&action.sa_mask);
+  action.sa_handler = SIG_IGN;
+  sigaction(SIGPIPE, &action, NULL);
+  action.sa_handler = &handle_signal;
+  action.sa_flags = SA_RESTART;
+  sigaction(SIGUSR2, &action, NULL);
+}
 
 internal Coach_Options get_coach_options(char *args[]) {
   Coach_Options options{};
@@ -94,15 +113,18 @@ create_sorters_and_pipes(Coach_Options options, Array<size_t> sorters_sizes) {
 int main(int argc, char *args[]) {
   assert(argc == 7);
   Coach_Options options = get_coach_options(args);
+  register_signals();
   Pipe coord_pipe{options.pipe_name};
   coord_pipe.open(Pipe::Mode::Write_Only);
   auto sorters_sizes = calculate_sizes_for_sorters(options.id, options.records_n);
   auto sorters_and_pipes = create_sorters_and_pipes(options, sorters_sizes);
   auto sorters = sorters_and_pipes.first;
   auto pipes = sorters_and_pipes.second;
-  for (Process p : sorters) {
+
+  for (Process &p : sorters) {
     p.spawn();
   }
+
   for (Pipe &p : pipes) {
     p.open(Pipe::Mode::Read_Only);
   }
@@ -164,6 +186,9 @@ int main(int argc, char *args[]) {
   for (size_t i = 0U; i != sorters_n; ++i) {
     coord_pipe << sorters_elapsed_secs[i];
   }
-
+  for (Process &p : sorters) {
+    p.wait();
+  }
+  coord_pipe << sigusr2_count;
   return EXIT_SUCCESS;
 }

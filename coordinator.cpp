@@ -7,9 +7,13 @@
 #include "utils.h"
 #include "vector.h"
 #include "process.h"
+#include "timer.h"
 
-using Stats_Pair = Pair<double, Array<double>>;
-using Stats = Array<Stats_Pair>;
+struct Stat {
+  Array<double> sorters_secs;
+  double coach_secs;
+  int signals_received;
+};
 
 constexpr char *INPUT_FILE_OPTION = (char *const) "-f";
 constexpr char *QUICKSORT_OPTION = (char *const) "-q";
@@ -125,18 +129,18 @@ internal Pair<Array<Process>, Array<Pipe>> create_coaches_and_pipes(const Progra
   return make_pair(coaches, pipes);
 }
 
-internal void print_stats(Stats stats) {
+internal void print_stats(Array<Stat> stats, double total_secs) {
   report("========================= STATS =========================\n");
   double min_coach_secs{std::numeric_limits<double>::max()};
   double max_coach_secs{0.0};
   double avg_coach_secs{0.0};
   size_t coach_i{0U};
-  for (Stats_Pair &p : stats) {
+  for (Stat &s : stats) {
     double min_sorter_secs{std::numeric_limits<double>::max()};
     double max_sorter_secs{0.0};
     double avg_sorter_secs{0.0};
 
-    for (double sorter_secs : p.second) {
+    for (double sorter_secs : s.sorters_secs) {
       if (sorter_secs < min_sorter_secs) {
         min_sorter_secs = sorter_secs;
       }
@@ -145,30 +149,33 @@ internal void print_stats(Stats stats) {
       }
       avg_sorter_secs += sorter_secs;
     }
-    avg_sorter_secs /= p.second.size;
+    avg_sorter_secs /= s.sorters_secs.size;
 
     report("COACH %zu:\n"
+           "\tSIGUSR2 signals received: %d\n"
            "\tMax sorter execution time: %lf sec\n"
            "\tMin sorter execution time: %lf sec\n"
            "\tAverage sorter execution time: %lf sec",
-           coach_i, max_sorter_secs, min_sorter_secs, avg_sorter_secs);
+           coach_i, s.signals_received, max_sorter_secs,
+           min_sorter_secs, avg_sorter_secs);
 
     ++coach_i;
 
-    if (p.first < min_coach_secs) {
-      min_coach_secs = p.first;
+    if (s.coach_secs < min_coach_secs) {
+      min_coach_secs = s.coach_secs;
     }
-    if (p.first > max_coach_secs) {
-      max_coach_secs = p.first;
+    if (s.coach_secs > max_coach_secs) {
+      max_coach_secs = s.coach_secs;
     }
-    avg_coach_secs += p.first;
+    avg_coach_secs += s.coach_secs;
   }
 
   avg_coach_secs /= stats.size;
   report("\nMax coach execution time: %lf sec\n"
          "Min coach execution time: %lf sec\n"
-         "Average coach execution time: %lf sec\n",
-         max_coach_secs, min_coach_secs, avg_coach_secs);
+         "Average coach execution time: %lf sec\n"
+         "Total execution time: %lf sec\n",
+         max_coach_secs, min_coach_secs, avg_coach_secs, total_secs);
   report("=========================================================");
 }
 
@@ -178,31 +185,41 @@ int main(int argc, char *args[]) {
   if (options.column_sorts.size > 4) {
     error_and_usage_report("You can sort at most 4 columns at once");
   }
+  Timer t{};
+  t.start();
   auto coaches_and_pipes = create_coaches_and_pipes(options);
   auto coaches = coaches_and_pipes.first;
   auto pipes = coaches_and_pipes.second;
-  for (Process p : coaches) {
+
+  for (Process &p : coaches) {
     p.spawn();
   }
+
   for (Pipe &p : pipes) {
     p.open(Pipe::Mode::Read_Only);
   }
 
-  Stats stats(options.column_sorts.size);
+  for (Process &p : coaches) {
+    p.wait();
+  }
+
+  Array<Stat> stats(options.column_sorts.size);
   for (size_t i = 0U; i != pipes.size; ++i) {
     Pipe p = pipes[i];
     size_t sorters_n = 1U << i;
     double coach_elapsed_secs;
     p >> coach_elapsed_secs;
-    Stats_Pair pair = make_pair(coach_elapsed_secs, Array<double>(sorters_n));
+    Array<double> sorters_secs(sorters_n);
     for (size_t j = 0U; j != sorters_n; ++j) {
       double elapsed_secs;
       p >> elapsed_secs;
-      pair.second.push(elapsed_secs);
+      sorters_secs.push(elapsed_secs);
     }
-    stats.push(pair);
+    int signals_received;
+    p >> signals_received;
+    stats.push(Stat{sorters_secs, coach_elapsed_secs, signals_received});
   }
-
-  print_stats(stats);
+  t.stop();
+  print_stats(stats, t.elapsed_seconds());
   return 0;
 }

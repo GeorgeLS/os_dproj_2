@@ -7,11 +7,13 @@ struct Timer {
 
   void start();
   void stop();
+  double elapsed_cpu_seconds();
   double elapsed_seconds();
-
  private:
   struct tms tb1;
   struct tms tb2;
+  double t1;
+  double t2;
   double ticks_per_sec;
 };
 

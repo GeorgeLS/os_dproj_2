@@ -7,6 +7,7 @@
 #include <cstdio>
 #include "common.h"
 #include "array.h"
+#include "report.h"
 
 struct Pipe {
   struct Pipe_Exception : public std::exception {
@@ -71,10 +72,12 @@ Pipe &Pipe::operator<<(const T &value) {
 template<typename T>
 T Pipe::read() {
   ssize_t res = ::read(fd, buffer.data, sizeof(T));
+
   if (res == -1) {
     perror("Pipe read");
     throw Pipe_Exception("Error while reading");
   }
+
   buffer.size = sizeof(T);
   return *(T*)buffer.data;
 }
