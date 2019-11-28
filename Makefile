@@ -1,5 +1,5 @@
 CC := g++
-CLFLAGS := -std=c++11
+CLFLAGS := -std=c++11 -O3
 CLFLAGS += -MMD
 ODIR := .OBJ
 
